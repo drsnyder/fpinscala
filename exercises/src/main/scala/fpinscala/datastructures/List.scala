@@ -151,4 +151,15 @@ object List { // `List` companion object. Contains functions for creating and wo
     case (Cons(lh, lt), Cons(rh, rt)) => Cons(f(lh,rh), zipWith(lt, rt)(f))
   }
 
+  def hasSubsequence[A](sup: List[A], sub: List[A]): Boolean = (sup, sub) match {
+    case (Cons(lh, lt), Nil) => true
+    case (Nil, Nil) => true
+    case (Nil, Cons(sh, st)) => false
+    case (Cons(lh, lt), Cons(sh, st)) =>
+      if (lh == sh)
+        hasSubsequence(lt, st)
+      else
+        hasSubsequence(lt, sub)
+  }
+
 }
