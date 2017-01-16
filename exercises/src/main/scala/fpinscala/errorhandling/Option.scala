@@ -1,7 +1,6 @@
 package fpinscala.errorhandling
 
-
-import scala.{Option => _, Some => _, Either => _, _} // hide std library `Option`, `Some` and `Either`, since we are writing our own in this chapter
+import scala.{Either => _, Option => _, Some => _, _} // hide std library `Option`, `Some` and `Either`, since we are writing our own in this chapter
 
 sealed trait Option[+A] {
   def map[B](f: A => B): Option[B] = this match {
@@ -62,6 +61,15 @@ object Option {
     case (Some(a), Some(b)) => Some(f(a,b))
   }
 
+  def map2_1[A,B,C](a: Option[A], b: Option[B])(f: (A, B) => C): Option[C] =
+    a flatMap (aa => b map (bb => f(aa, bb)))
+
+  def map2_f[A,B,C](a: Option[A], b: Option[B])(f: (A, B) => C): Option[C] =
+    for {
+      aa <- a
+      bb <- b
+    } yield f(aa, bb)
+
   def sequence[A](a: List[Option[A]]): Option[List[A]] =
     Some(a.foldLeft(List[A]()){ (n, x) =>
       x match {
@@ -71,5 +79,16 @@ object Option {
     })
 
 
-  def traverse[A, B](a: List[A])(f: A => Option[B]): Option[List[B]] = sys.error("todo")
+  def sequence_1[A](a: List[Option[A]]): Option[List[A]] =
+    a.foldRight[Option[List[A]]](Some(Nil))((x,y) => map2(x,y)(_ :: _))
+
+
+  def traverse[A, B](a: List[A])(f: A => Option[B]): Option[List[B]] =
+    a.foldRight[Option[List[B]]](Some(Nil))((x, y) => f(x).flatMap(xx => y.map(yy => yy :+ xx)))
+
+  def traverse_A[A, B](a: List[A])(f: A => Option[B]): Option[List[B]] =
+    a.foldRight[Option[List[B]]](Some(Nil))((x, y) => map2(f(x),y)(_ :: _))
+
+  def sequenceThroughTraverse[A](a: List[Option[A]]): Option[List[A]] =
+    traverse(a)(x => x)
 }
