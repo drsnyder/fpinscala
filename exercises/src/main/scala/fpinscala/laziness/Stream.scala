@@ -1,6 +1,8 @@
 package fpinscala.laziness
 
 import Stream._
+
+import scala.annotation.tailrec
 trait Stream[+A] {
 
   def toList: List[A] =
@@ -21,18 +23,58 @@ trait Stream[+A] {
     case Empty => None
     case Cons(h, t) => if (f(h())) Some(h()) else t().find(f)
   }
-  def take(n: Int): Stream[A] = sys.error("todo")
 
-  def drop(n: Int): Stream[A] = sys.error("todo")
+  // wrong
+  def takeb(n: Int): Stream[A] = this match {
+    case Cons(h, t) => if (n == 0) this else cons(h(), t().take(n - 1))
+    case _ => Empty
+  }
 
-  def takeWhile(p: A => Boolean): Stream[A] = sys.error("todo")
+  def take(n: Int): Stream[A] = this match {
+    case Cons(h, t) if n > 1 => cons(h(), t().take(n - 1))
+    case Cons(h, _) if n == 1 => cons(h(), empty)
+    case _ => this
+  }
 
-  def forAll(p: A => Boolean): Boolean = sys.error("todo")
+  @annotation.tailrec
+  final def drop(n: Int): Stream[A] = this match {
+    case Cons(h, t) if n > 0 => t().drop(n - 1)
+    case _ => this
+  }
 
-  def headOption: Option[A] = sys.error("todo")
+  def takeWhile(p: A => Boolean): Stream[A] = this match {
+    case Cons(h, t) if p(h()) =>  cons(h(), t().takeWhile(p))
+    case _ => empty
+  }
+
+  def takeWhilefr(p: A => Boolean): Stream[A] =
+    foldRight(empty[A])((a, b) => if (p(a)) cons(a, b) else empty)
+
+  def forAll(p: A => Boolean): Boolean =
+    foldRight(true)((a, b) => p(a) && b)
+
+
+  def headOption: Option[A] = this match {
+    case Empty => None
+    case Cons(h, t) => Some(h())
+  }
+
+  def headOptionfr: Option[A] = {
+    foldRight(None: Option[A])((h, _) => Some(h))
+  }
+
 
   // 5.7 map, filter, append, flatmap using foldRight. Part of the exercise is
   // writing your own function signatures.
+  // def map[A,B](l: List[A])(f: A => B): List[B] =
+  def map[B](f: A => B): Stream[B] =
+    foldRight(empty[B])((h, t) => cons(f(h), t))
+
+  def filter(p: A => Boolean): Stream[A] =
+    foldRight(empty[A])((h, t) => if (p(h)) cons(h, t) else t)
+
+  def append[B>:A](l: Stream[B]): Stream[B] =
+    foldRight(l)((h, t) => cons(h, t))
 
   def startsWith[B](s: Stream[B]): Boolean = sys.error("todo")
 }
