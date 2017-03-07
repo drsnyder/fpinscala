@@ -15,7 +15,7 @@ trait Stream[+A] {
       case _ => z
     }
 
-  def exists(p: A => Boolean): Boolean = 
+  def exists(p: A => Boolean): Boolean =
     foldRight(false)((a, b) => p(a) || b) // Here `b` is the unevaluated recursive step that folds the tail of the stream. If `p(a)` returns `true`, `b` will never be evaluated and the computation terminates early.
 
   @annotation.tailrec
@@ -76,7 +76,30 @@ trait Stream[+A] {
   def append[B>:A](l: Stream[B]): Stream[B] =
     foldRight(l)((h, t) => cons(h, t))
 
+  def flatMap[B>:A](f: A => Stream[B]): Stream[B] =
+    foldRight(empty[B])((h, t) => f(h).append(t))
+
   def startsWith[B](s: Stream[B]): Boolean = sys.error("todo")
+
+  //def mapViaUnfold[B](f: A => B): Stream[B] =
+  def mapu[B](f: A => B): Stream[B] =
+    unfold(this)({
+      case Cons(h, t) => Some((f(h()), t()))
+      case _ => None
+    })
+
+  def takeu(n: Int): Stream[A] =
+    unfold(this)({
+      case Cons(h, t) if n > 1 => Some(h(), t().take(n - 1))
+      case Cons(h, _) if n == 1 => Some(h(), empty)
+      case _ => None
+    })
+
+  def takeWhileu(p: A => Boolean): Stream[A] =
+    unfold(this)({
+      case Cons(h, t) if p(h()) => Some(h(), t())
+      case _ => None
+    })
 }
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
@@ -91,11 +114,46 @@ object Stream {
   def empty[A]: Stream[A] = Empty
 
   def apply[A](as: A*): Stream[A] =
-    if (as.isEmpty) empty 
+    if (as.isEmpty) empty
     else cons(as.head, apply(as.tail: _*))
 
   val ones: Stream[Int] = Stream.cons(1, ones)
-  def from(n: Int): Stream[Int] = sys.error("todo")
 
-  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = sys.error("todo")
+  def constant[A](a: A): Stream[A] =
+    Stream.cons(a, constant(a))
+
+  def from(n: Int): Stream[Int] =
+    Stream.cons(n, from(n+1))
+
+  def fibs(): Stream[Int] = {
+    def go(ip: Int, i: Int): Stream[Int] =
+      Stream.cons(ip, go(i, ip + i))
+
+    go(0, 1)
+  }
+
+  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = f(z) match {
+    case Some((a, s)) => Stream.cons(a, unfold(s)(f))
+    case _ => empty
+  }
+
+  def onesu: Stream[Int] = unfold((1, 1))(s => Option(1, s))
+
+  def fibsu(): Stream[Int] =
+    unfold((0, 1))((s: (Int, Int)) =>
+      s match { case(ip, i) => Option(ip, (i, ip + i)) })
+
+  def constantu[A](a: A): Stream[A] =
+    unfold((a, a))(s => Option(a, s))
+
+  def fromu(n: Int): Stream[Int] =
+    unfold((n, n + 1))({ case(p, n) => Option(p, (n, n + 1)) })
+
+  def zipWith[A,B,C](l: Stream[A], r: Stream[B])(f: (A,B) => C): Stream[C] =
+    unfold((l, r))({
+      case (Cons(lh, lt), Cons(rh, rt)) => Option(f(lh(), rh()), (lt(), rt()))
+      case (Empty, _) => None
+      case (_, Empty) => None
+    })
+
 }
