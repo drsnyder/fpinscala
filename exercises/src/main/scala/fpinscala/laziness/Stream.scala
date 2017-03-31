@@ -117,6 +117,13 @@ trait Stream[+A] {
       case (_, Cons(rh, rt)) => Option(((None, Option(rh())), (Empty, rt())))
       case _ => None
     })
+
+  def hasSubsequence[A](s: Stream[A]): Boolean =
+    tails exists (_ startsWith s)
+
+  def scanRight[B >: A](start: B)(f: (B, B) => B): Stream[B] =
+    tails.map(e => e.foldRight(start)((a, b) => f(a, b))).append(Stream(start))
+
 }
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
@@ -179,6 +186,7 @@ object Stream {
 
   def hasSubsequence[A](s: Stream[A], sub: Stream[A]): Boolean =
     s.tails.map(t => t.startsWith(sub)).exists(p => p)
+
 
   // def hasSubsequence[A](sup: Stream[A], sub: Stream[A]): Boolean =
   //   unfold((sup, sub))({
