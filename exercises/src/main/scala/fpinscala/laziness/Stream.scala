@@ -79,7 +79,16 @@ trait Stream[+A] {
   def flatMap[B>:A](f: A => Stream[B]): Stream[B] =
     foldRight(empty[B])((h, t) => f(h).append(t))
 
-  def startsWith[B](s: Stream[B]): Boolean = sys.error("todo")
+  def startsWith[B](s: Stream[B]): Boolean =
+    zipAll(s).takeWhile(_._2.isDefined) forAll {
+      case (h, h2) => h == h2
+    }
+
+  def tails: Stream[Stream[A]] =
+    unfold(this)({
+      case Cons(h, t) => Some(cons(h(), t()), t())
+      case _ => None
+    })
 
   //def mapViaUnfold[B](f: A => B): Stream[B] =
   def mapu[B](f: A => B): Stream[B] =
@@ -98,6 +107,14 @@ trait Stream[+A] {
   def takeWhileu(p: A => Boolean): Stream[A] =
     unfold(this)({
       case Cons(h, t) if p(h()) => Some(h(), t())
+      case _ => None
+    })
+
+  def zipAll[B](s2: Stream[B]): Stream[(Option[A],Option[B])] =
+    unfold((this, s2))({
+      case (Cons(lh, lt), Cons(rh, rt)) => Option(((Option(lh()), Option(rh())), (lt(), rt())))
+      case (Cons(lh, lt), _) => Option(((Option(lh()), None), (lt(), Empty)))
+      case (_, Cons(rh, rt)) => Option(((None, Option(rh())), (Empty, rt())))
       case _ => None
     })
 }
@@ -155,5 +172,17 @@ object Stream {
       case (Empty, _) => None
       case (_, Empty) => None
     })
+
+  // this doesn't work if prefix is longer
+  def startsWithz[A](l: Stream[A], prefix: Stream[A]): Boolean =
+    !zipWith(l, prefix)((l, r) => l == r).exists(_ == false)
+
+  def hasSubsequence[A](s: Stream[A], sub: Stream[A]): Boolean =
+    s.tails.map(t => t.startsWith(sub)).exists(p => p)
+
+  // def hasSubsequence[A](sup: Stream[A], sub: Stream[A]): Boolean =
+  //   unfold((sup, sub))({
+  //     case (a, b) => if (!zipWith(a, b)((x, y) => x == y).exists(p => p == false)) Some((true), empty)
+  //   })
 
 }
