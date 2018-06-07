@@ -146,6 +146,9 @@ object Stream {
   def constant[A](a: A): Stream[A] =
     Stream.cons(a, constant(a))
 
+  def repeatedly[A](f: () => A): Stream[A] =
+    Stream.cons(f(), repeatedly(f))
+
   def from(n: Int): Stream[Int] =
     Stream.cons(n, from(n+1))
 

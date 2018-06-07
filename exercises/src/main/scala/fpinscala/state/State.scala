@@ -1,5 +1,7 @@
 package fpinscala.state
 
+//import fpinscala.laziness.Stream
+import fpinscala.datastructures._
 
 trait RNG {
   def nextInt: (Int, RNG) // Should generate a random `Int`. We'll later define other functions in terms of `nextInt`.
@@ -30,17 +32,60 @@ object RNG {
       (f(a), rng2)
     }
 
-  def nonNegativeInt(rng: RNG): (Int, RNG) = ???
+  def nonNegativeInt(rng: RNG): (Int, RNG) = {
+    val (ni, rng2) = rng.nextInt
+    if (ni > 0) (ni, rng2)
+    else if (ni == Int.MinValue) (0, rng2)
+    else (ni + Int.MaxValue, rng2)
+  }
 
-  def double(rng: RNG): (Double, RNG) = ???
+  def double(rng: RNG): (Double, RNG) = {
+    val (ni, rng2) = nonNegativeInt(rng)
+    (ni.toDouble / Int.MaxValue, rng2)
+  }
 
-  def intDouble(rng: RNG): ((Int,Double), RNG) = ???
+  // this blows up with large lists
+  //def doubles(rng: RNG): Stream[Double] =
+  // Stream.unfold(double(rng))({ case(d, r) => Option(d, (d, r))})
 
-  def doubleInt(rng: RNG): ((Double,Int), RNG) = ???
+  def mean(ds: Stream[Double]): Double =
+    ds.foldRight(0.0)(_ + _) / ds.foldRight(0.0)((_, a) => a + 1.0)
 
-  def double3(rng: RNG): ((Double,Double,Double), RNG) = ???
 
-  def ints(count: Int)(rng: RNG): (List[Int], RNG) = ???
+  def intDouble(rng: RNG): ((Int,Double), RNG) = {
+    val (i, rng2) = rng.nextInt
+    val (d, rng3) = double(rng2)
+    ((i, d), rng3)
+  }
+
+  def doubleInt(rng: RNG): ((Double,Int), RNG) = {
+    val ((i, d), rng2) = intDouble(rng)
+    ((d, i), rng2)
+  }
+
+  def double3(rng: RNG): ((Double,Double,Double), RNG) = {
+    val (d1, rng2) = double(rng)
+    val (d2, rng3) = double(rng2)
+    val (d3, rng4) = double(rng3)
+    ((d1, d2, d3), rng4)
+  }
+
+  def ints(count: Int)(rng: RNG): (List[Int], RNG) = {
+    @annotation.tailrec
+    def go(n: Int, acc: List[Int], rng: RNG): (List[Int], RNG) = {
+      if (n <= 0) (acc, rng)
+      else {
+        val (i, rngn) = rng.nextInt
+        go(n - 1, Cons(i, acc), rngn)
+      }
+    }
+
+    go(count, List(), rng)
+  }
+
+
+  def doublem: Rand[Double] =
+    map(nonNegativeInt)(i => i.toDouble / Int.MaxValue)
 
   def map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = ???
 
