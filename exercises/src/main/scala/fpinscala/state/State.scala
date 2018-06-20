@@ -1,7 +1,8 @@
 package fpinscala.state
 
 //import fpinscala.laziness.Stream
-import fpinscala.datastructures._
+import scala.collection.immutable.List
+//import fpinscala.datastructures._
 
 trait RNG {
   def nextInt: (Int, RNG) // Should generate a random `Int`. We'll later define other functions in terms of `nextInt`.
@@ -76,22 +77,69 @@ object RNG {
       if (n <= 0) (acc, rng)
       else {
         val (i, rngn) = rng.nextInt
-        go(n - 1, Cons(i, acc), rngn)
+        go(n - 1,i :: acc, rngn)
       }
     }
 
     go(count, List(), rng)
   }
 
+  def intsr(count: Int)(rng: RNG): (List[Int], RNG) =
+    if (count == 0)
+      (List(), rng)
+    else {
+      val (x, r1)  = rng.nextInt
+      val (xs, r2) = intsr(count - 1)(r1)
+      (x :: xs, r2)
+    }
+
 
   def doublem: Rand[Double] =
     map(nonNegativeInt)(i => i.toDouble / Int.MaxValue)
 
-  def map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = ???
+  def map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] =
+    rng => {
+      val (va, rng1) = ra(rng)
+      val (vb, rng2) = rb(rng1)
+      (f(va, vb), rng2)
+    }
 
-  def sequence[A](fs: List[Rand[A]]): Rand[List[A]] = ???
+  def both[A,B](ra: Rand[A], rb: Rand[B]): Rand[(A,B)] =
+    map2(ra, rb)((_, _))
 
-  def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] = ???
+  val randIntDouble: Rand[(Int, Double)] =
+    both(int, double)
+
+  val randDoubleInt: Rand[(Double, Int)] =
+    both(double, int)
+
+
+  def sequence[A](fs: List[Rand[A]]): Rand[List[A]] =
+    fs.foldRight(unit(List[A]()))((f, acc) => map2(f, acc)(_ :: _))
+
+  def _ints(count: Int): Rand[List[Int]] =
+    sequence(List.fill(count)(int))
+
+  def _doubles(count: Int): Rand[List[Double]] =
+    sequence(List.fill(count)(double))
+
+  def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] =
+    rng => {
+      val (fa, rng2) = f(rng)
+      val (ga, rng3) = g(fa)(rng2)
+      (ga, rng3)
+    }
+
+  def nonNegativeLessThan(n: Int): Rand[Int] =
+    flatMap(rng => {
+      val (i, rng2) = nonNegativeInt(rng)
+      (i, rng2)
+      })(v => { rng => {
+        val mod = v % n
+        if (v + (n-1) - mod >= 0)
+          (mod, rng)
+        else nonNegativeLessThan(n)(rng)
+      }})
 }
 
 case class State[S,+A](run: S => (A, S)) {
