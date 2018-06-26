@@ -93,7 +93,6 @@ object RNG {
       (x :: xs, r2)
     }
 
-
   def doublem: Rand[Double] =
     map(nonNegativeInt)(i => i.toDouble / Int.MaxValue)
 
@@ -126,29 +125,51 @@ object RNG {
   def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] =
     rng => {
       val (fa, rng2) = f(rng)
-      val (ga, rng3) = g(fa)(rng2)
-      (ga, rng3)
+      g(fa)(rng2)
     }
 
+  def _map[A,B](s: Rand[A])(f: A => B): Rand[B] =
+    flatMap(s)(v => unit(f(v)))
+
+  def _map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = 
+    flatMap(ra)(a => _map(rb)(b => f(a, b)))
+
+  def _doublem: Rand[Double] =
+    _map(nonNegativeInt)(i => i.toDouble / Int.MaxValue)
+
+  def _both[A,B](ra: Rand[A], rb: Rand[B]): Rand[(A,B)] =
+    _map2(ra, rb)((_, _))
+
+  val _randIntDouble: Rand[(Int, Double)] =
+    _both(int, double)
+
   def nonNegativeLessThan(n: Int): Rand[Int] =
-    flatMap(rng => {
-      val (i, rng2) = nonNegativeInt(rng)
-      (i, rng2)
-      })(v => { rng => {
+    flatMap(nonNegativeInt) {  v =>
         val mod = v % n
         if (v + (n-1) - mod >= 0)
-          (mod, rng)
-        else nonNegativeLessThan(n)(rng)
-      }})
+          unit(mod)
+        else nonNegativeLessThan(n)
+    }
+
+  def rollDie: Rand[Int] = map(nonNegativeLessThan(6))(_ + 1)
 }
 
+import State._
+
+// TODO: 6.10
 case class State[S,+A](run: S => (A, S)) {
-  def map[B](f: A => B): State[S, B] =
-    sys.error("todo")
+
+  def map[B](f: A => B): State[S, B] = 
+    flatMap(a => unit(f(a)))
+
   def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] =
     sys.error("todo")
+
   def flatMap[B](f: A => State[S, B]): State[S, B] =
-    sys.error("todo")
+    State(state => {
+      val (a, newState) = run(state)
+      f(a).run(newState)
+    })
 }
 
 sealed trait Input
@@ -159,5 +180,12 @@ case class Machine(locked: Boolean, candies: Int, coins: Int)
 
 object State {
   type Rand[A] = State[RNG, A]
+
+  // def unit[A](a: A): Rand[A] =
+  //   rng => (a, rng)
+
+  def unit[S, A](a: A): State[S, A] =
+    State(state => (a, state))
+
   def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
 }
