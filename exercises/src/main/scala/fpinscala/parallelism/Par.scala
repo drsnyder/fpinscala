@@ -3,6 +3,20 @@ package fpinscala.parallelism
 import java.util.concurrent._
 import language.implicitConversions
 
+/**
+ *
+ * import java.util.concurrent._
+ * val fjp = new ForkJoinPool()
+ * run(fjp)(parFilter(List(1, 2, 3))(i => i < 3)).get(1, TimeUnit.SECONDS)
+ *
+ * o
+ * val ctp = java.util.concurrent.Executors.newCachedThreadPool()
+ * run(ctp)(parFilter(List(1, 2, 3))(i => i < 3)).get(1, TimeUnit.SECONDS)
+ *
+ *
+ *
+ */
+
 object Par {
   type Par[A] = ExecutorService => Future[A]
   
@@ -16,8 +30,11 @@ object Par {
     def isCancelled = false 
     def cancel(evenIfRunning: Boolean): Boolean = false 
   }
-  
-  def map2[A,B,C](a: Par[A], b: Par[B])(f: (A,B) => C): Par[C] = // `map2` doesn't evaluate the call to `f` in a separate logical thread, in accord with our design choice of having `fork` be the sole function in the API for controlling parallelism. We can always do `fork(map2(a,b)(f))` if we want the evaluation of `f` to occur in a separate thread.
+  // `map2` doesn't evaluate the call to `f` in a separate logical thread, in
+  // accord with our design choice of having `fork` be the sole function in the
+  // API for controlling parallelism. We can always do `fork(map2(a,b)(f))` if
+  // we want the evaluation of `f` to occur in a separate thread.
+  def map2[A,B,C](a: Par[A], b: Par[B])(f: (A,B) => C): Par[C] = 
     (es: ExecutorService) => {
       val af = a(es) 
       val bf = b(es)
@@ -29,8 +46,54 @@ object Par {
       def call = a(es).get
     })
 
+  def lazyUnit[A](a: => A): Par[A] = fork(unit(a))
+
+  def asyncF[A,B](f: A => B): A => Par[B] = 
+    a => lazyUnit(f(a))
+
   def map[A,B](pa: Par[A])(f: A => B): Par[B] = 
     map2(pa, unit(()))((a,_) => f(a))
+
+
+  //def sequence[S, A](fs: List[State[S, A]]): State[S, List[A]] =
+    //fs.foldRight(unit[S, List[A]](List()))((f, acc) => f.map2(acc)(_ :: _))
+  // 7.5
+  def sequence[A](ps: List[Par[A]]): Par[List[A]] = 
+    ps.foldRight(unit[List[A]](List()))((h, t) => map2(h, t)(_ :: _))
+
+  // answer
+  def sequence_simple[A](l: List[Par[A]]): Par[List[A]] =
+    l.foldRight[Par[List[A]]](unit(List()))((h,t) => map2(h,t)(_ :: _))
+
+  def parMap[A,B](ps: List[A])(f: A => B): Par[List[B]] = fork {
+    val fbs: List[Par[B]] = ps.map(asyncF(f))
+    sequence(fbs)
+  }
+
+
+  //def sequenceRight[A](as: List[Par[A]]): Par[List[A]] =
+    //as match {
+      //case Nil => unit(Nil)
+      //case h :: t => map2(h, fork(sequenceRight(t)))(_ :: _)
+    //}
+
+
+  def parFilter[A](as: List[A])(f: A => Boolean): Par[List[A]] =
+    as match {
+      case Nil => unit(Nil)
+      case h :: t => 
+        if (f(h)) map2(unit(h), fork(parFilter(t)(f)))(_ :: _)
+        else fork(parFilter(t)(f))
+    }
+
+  // Could this be rewritten as reduce?
+  def sum(ints: IndexedSeq[Int]): Par[Int] =
+    if (ints.length <= 1)
+      Par.unit(ints.headOption getOrElse 0) 
+    else {
+      val (l,r) = ints.splitAt(ints.length/2)
+      Par.map2(Par.fork(sum(l)), Par.fork(sum(r)))(_ + _)
+    }
 
   def sortPar(parList: Par[List[Int]]) = map(parList)(_.sorted)
 
