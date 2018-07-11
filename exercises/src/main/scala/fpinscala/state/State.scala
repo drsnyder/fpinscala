@@ -158,6 +158,7 @@ import State._
 
 // TODO: 6.10
 case class State[S,+A](run: S => (A, S)) {
+<<<<<<< HEAD
 
   def map[B](f: A => B): State[S, B] = 
     flatMap(a => unit(f(a)))
@@ -171,6 +172,14 @@ case class State[S,+A](run: S => (A, S)) {
       f(a).run(newState)
     })
 
+=======
+  def map[B](f: A => B): State[S, B] =
+    ???
+  def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] =
+    ???
+  def flatMap[B](f: A => State[S, B]): State[S, B] =
+    ???
+>>>>>>> upstream/master
 }
 
 sealed trait Input

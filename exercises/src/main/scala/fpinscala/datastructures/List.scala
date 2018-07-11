@@ -163,5 +163,4 @@ object List { // `List` companion object. Contains functions for creating and wo
       else
         hasSubsequence(lt, sub)
   }
-
 }

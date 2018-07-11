@@ -123,8 +123,8 @@ trait Stream[+A] {
 
   def scanRight[B >: A](start: B)(f: (B, B) => B): Stream[B] =
     tails.map(e => e.foldRight(start)((a, b) => f(a, b))).append(Stream(start))
-
 }
+
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
 
