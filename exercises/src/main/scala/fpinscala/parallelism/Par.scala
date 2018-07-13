@@ -108,6 +108,44 @@ object Par {
       if (run(es)(cond).get) t(es) // Notice we are blocking on the result of `cond`.
       else f(es)
 
+  def choiceN[A](n: Par[Int])(choices: List[Par[A]]): Par[A] =
+    es => {
+      val i = run(es)(n).get
+      choices.apply(i)(es)
+    }
+
+  def binaryBoolToInt(cond: Par[Boolean]): Par[Int] =
+    es => {
+      if (run(es)(cond).get)
+        unit(0)(es)
+      else
+        unit(1)(es)
+    }
+
+  def _choice[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
+    choiceN(map(cond)(a => if (a) 0 else 1))(List(t, f))
+
+  // This is normally flatMap or bind!!!
+  def chooser[A,B](pa: Par[A])(choices: A => Par[B]): Par[B] = es =>
+    choices(run(es)(pa).get)(es)
+
+  def __choice[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
+    chooser(cond)(a => if(a) t else f)
+
+  def __choiceN[A](n: Par[Int])(choices: List[Par[A]]): Par[A] =
+    chooser(n)(i => choices.apply(i))
+
+  def join[A](a: Par[Par[A]]): Par[A] = es => {
+    val outer = run(es)(a).get
+    run(es)(outer)
+  }
+
+  // def map[A,B](pa: Par[A])(f: A => B): Par[B] =
+  def flatMap[A,B](pa: Par[A])(choices: A => Par[B]): Par[B] =
+    join(map(pa)(choices))
+
+
+
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
