@@ -94,7 +94,7 @@ object Prop {
 // val rng = RNG.Simple(10)
 // val g = Gen(State.unit(rng)) g.listOfN(Gen.unit(10))
 case class Gen[+A](sample: State[RNG,A]) {
-  def map[B](f: A => B): Gen[B] = 
+  def map[B](f: A => B): Gen[B] =
     Gen(sample.map(f))
 
   def flatMap[B](f: A => Gen[B]): Gen[B] =
@@ -102,11 +102,11 @@ case class Gen[+A](sample: State[RNG,A]) {
 
   def listOfN(size: Int): Gen[List[A]] =
     Gen.listOfN(size, this)
-  
+
   def listOfN(size: Gen[Int]): Gen[List[A]] =
     size flatMap (n => this.listOfN(n))
 
-  def union[A](g1: Gen[A], g2: Gen[A]): Gen[A] = 
+  def union[A](g1: Gen[A], g2: Gen[A]): Gen[A] =
     boolean.flatMap(b => if (b) g1 else g2)
 
   def weighted[A](g1: (Gen[A],Double), g2: (Gen[A],Double)): Gen[A] = {
