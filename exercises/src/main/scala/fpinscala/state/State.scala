@@ -137,6 +137,9 @@ object RNG {
   def _doublem: Rand[Double] =
     _map(nonNegativeInt)(i => i.toDouble / Int.MaxValue)
 
+  def boolean: Rand[Boolean] =
+    _map(nonNegativeLessThan(100))(i => i < 50)
+
   def _both[A,B](ra: Rand[A], rb: Rand[B]): Rand[(A,B)] =
     _map2(ra, rb)((_, _))
 
