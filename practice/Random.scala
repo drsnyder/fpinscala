@@ -1,4 +1,4 @@
-import Random._
+// import Random._
 
 trait RNG {
 	def nextInt: (Int, RNG)
@@ -40,6 +40,12 @@ object Random {
     val (fa, rng1) = f(rng)
     g(fa)(rng1)
   }
+
+  def map_1[A,B](s: Rand[A])(f: A => B): Rand[B] =
+    flatMap(s)(i => unit(f(i)))
+
+  def map2_1[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] =
+    flatMap(ra)(a => map(rb)(b => f(a, b)))
 
   def nonNegativeLessThan(n: Int): Rand[Int] =
     flatMap(nonNegativeInt)(i => {
@@ -126,4 +132,6 @@ object Random {
     
     iter(count, List(), rng)
   }
+
+  def rollDie: Rand[Int] = map(nonNegativeLessThan(6))(_ + 1)
 }
