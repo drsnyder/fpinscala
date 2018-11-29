@@ -106,6 +106,11 @@ object Nonblocking {
     def sequence[A](as: List[Par[A]]): Par[List[A]] =
       map(sequenceBalanced(as.toIndexedSeq))(_.toList)
 
+    def parMap[A,B](ps: List[A])(f: A => B): Par[List[B]] = fork {
+      val fbs: List[Par[B]] = ps.map(asyncF(f))
+      sequence(fbs)
+    }
+
     // exercise answers
 
     /*
@@ -122,6 +127,8 @@ object Nonblocking {
      * through the implementation. What is the type of `p(es)`? What
      * about `t(es)`? What about `t(es)(cb)`?
      */
+
+    // FIXME: could the inside be replaced with fork {}
     def choice[A](p: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
       es => new Future[A] {
         def apply(cb: A => Unit): Unit =
@@ -131,7 +138,17 @@ object Nonblocking {
           }
       }
 
-    def choiceN[A](p: Par[Int])(ps: List[Par[A]]): Par[A] = ???
+    def choice1[A](p: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
+      choiceN(map(p)(c => if (c) 0 else 1))(List(t, f))
+
+
+    def choiceN[A](p: Par[Int])(ps: List[Par[A]]): Par[A] =
+      es => new Future[A] {
+        def apply(cb: A => Unit): Unit =
+          p(es) { idx =>
+            eval(es) { ps(idx)(es)(cb) }
+          }
+      }
 
     def choiceViaChoiceN[A](a: Par[Boolean])(ifTrue: Par[A], ifFalse: Par[A]): Par[A] =
       ???
@@ -172,3 +189,10 @@ object Nonblocking {
     }
   }
 }
+
+// import fpinscala.parallelism._
+// import java.util.concurrent.Executors
+// import Nonblocking.Par._
+// val p = parMap(List.range(1, 100000))(math.sqrt(_))
+// val x = run(Executors.newFixedThreadPool(2))(p)
+//

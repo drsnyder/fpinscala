@@ -62,8 +62,6 @@ object State {
     })
     ((last.coins, last.candies), last)
   })
-		
-
 }
 
 // simulateMachine(List(Coin, Turn)).run(Machine(false, 0, 0))
