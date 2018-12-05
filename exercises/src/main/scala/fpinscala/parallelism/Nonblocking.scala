@@ -156,27 +156,45 @@ object Nonblocking {
     def choiceMap[K,V](p: Par[K])(ps: Map[K,Par[V]]): Par[V] =
       ???
 
-    // see `Nonblocking.scala` answers file. This function is usually called something else!
+    // see `Nonblocking.scala` answers file. This function is usually called
+    // something else!
     def chooser[A,B](p: Par[A])(f: A => Par[B]): Par[B] =
-      ???
+      es => new Future[B] {
+        def apply(cb: B => Unit): Unit =
+          p(es) {
+            r => eval(es) { f(r)(es)(cb) }
+          }
+      }
 
+
+    // same as chooser
     def flatMap[A,B](p: Par[A])(f: A => Par[B]): Par[B] =
-      ???
+      es => new Future[B] {
+        def apply(cb: B => Unit): Unit =
+          p(es) {
+            r => eval(es) { f(r)(es)(cb) }
+          }
+      }
 
     def choiceViaChooser[A](p: Par[Boolean])(f: Par[A], t: Par[A]): Par[A] =
-      ???
+      flatMap(p)(b => if (b) f else t)
 
     def choiceNChooser[A](p: Par[Int])(choices: List[Par[A]]): Par[A] =
-      ???
+      flatMap(p)(idx => choices(idx))
 
-    def join[A](p: Par[Par[A]]): Par[A] =
-      ???
+    def join[A](outer: Par[Par[A]]): Par[A] =
+      es => new Future[A] {
+        def apply(cb: A => Unit): Unit =
+          outer(es) {
+            inner => eval(es) { inner(es)(cb) }
+          }
+      }
 
-    def joinViaFlatMap[A](a: Par[Par[A]]): Par[A] =
-      ???
+    def joinViaFlatMap[A](outer: Par[Par[A]]): Par[A] =
+      flatMap(outer)(inner => inner)
 
     def flatMapViaJoin[A,B](p: Par[A])(f: A => Par[B]): Par[B] =
-      ???
+      join(map(p)(f))
 
     /* Gives us infix syntax for `Par`. */
     implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
@@ -190,9 +208,19 @@ object Nonblocking {
   }
 }
 
-// import fpinscala.parallelism._
-// import java.util.concurrent.Executors
-// import Nonblocking.Par._
-// val p = parMap(List.range(1, 100000))(math.sqrt(_))
-// val x = run(Executors.newFixedThreadPool(2))(p)
-//
+/**
+ import fpinscala.parallelism._
+ import java.util.concurrent.Executors
+ import Nonblocking.Par._
+ val S = Executors.newFixedThreadPool(4)
+
+ val p = parMap(List.range(1, 100000))(math.sqrt(_))
+ val x = run(Executors.newFixedThreadPool(2))(p)
+
+ run(S)(choiceN(unit(1))(List(unit(1),unit(2))))
+ val x = run(S)(chooser(unit(1))(v => unit(2)))
+
+ run(S)(choiceViaChooser(unit(true))(unit(1),unit(2)))
+
+ run(S)(choiceNChooser(unit(0))(List(unit(1),unit(2))))
+ */
