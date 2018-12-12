@@ -212,7 +212,7 @@ object Nonblocking {
  import fpinscala.parallelism._
  import java.util.concurrent.Executors
  import Nonblocking.Par._
- val S = Executors.newFixedThreadPool(4)
+ val S = Executors.newFixedThreadPool(8)
 
  val p = parMap(List.range(1, 100000))(math.sqrt(_))
  val x = run(Executors.newFixedThreadPool(2))(p)
@@ -223,4 +223,12 @@ object Nonblocking {
  run(S)(choiceViaChooser(unit(true))(unit(1),unit(2)))
 
  run(S)(choiceNChooser(unit(0))(List(unit(1),unit(2))))
+
+ val nestedPar = unit(unit("foo"))
+ run(S)(join(nestedPar))
+
+ val m = map(unit(1))(i => unit(i + 1))
+ run(S)(join(m))
+
+
  */

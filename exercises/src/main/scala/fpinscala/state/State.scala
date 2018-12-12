@@ -189,7 +189,6 @@ object State {
   def sequence[S, A](fs: List[State[S, A]]): State[S, List[A]] =
     fs.foldRight(unit[S, List[A]](List()))((f, acc) => f.map2(acc)(_ :: _))
 
-
   def sget[S]: State[S, S] = State(s => (s, s))
   def sset[S](s: S): State[S, Unit] = State(_ => ((), s))
 

@@ -91,11 +91,33 @@ object Prop {
 }
 
 // FIXME: why did this work? You can't instantiate a trait? Why?
-// val rng = RNG.Simple(10)
-// val g = Gen(State.unit(rng)) g.listOfN(Gen.unit(10))
+/*
+val rng = RNG.Simple(10)
+val g = Gen(State.unit(rng))
+g.listOfN(Gen.unit(10))
+
+g.union(Gen.unit(1), Gen.unit(2)).sample.run(rng)
+g.weighted((Gen.unit(1), 0.9), (Gen.unit(2), 0.2)).sample.run(RNG.Simple(2))
+
+def even(i: Int): Boolean = (i % 2) == 0
+val c = Gen.choose(0, 10)
+val d = Gen.choose(11, 20)
+Prop.forAll(c)(x => x < 9).run(10, rng)
+Prop.forAll(c)(even).run(10, rng)
+
+val a = Prop.forAll(c)(even) && Prop.forAll(d)(even)
+a.run(10, rng)
+
+val t = Prop.forAll(c)(i => i >= 0) || Prop.forAll(d)(even)
+t.run(10, rng)
+*/
 case class Gen[+A](sample: State[RNG,A]) {
   def map[B](f: A => B): Gen[B] =
     Gen(sample.map(f))
+
+  // def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] =
+  def map2[B,C](gb: Gen[B])(f: (A, B) => C): Gen[C] =
+    flatMap(a => gb.map(b => f(a, b)))
 
   def flatMap[B](f: A => Gen[B]): Gen[B] =
     Gen(sample.flatMap(a => f(a).sample))
@@ -124,18 +146,21 @@ case class Gen[+A](sample: State[RNG,A]) {
   def unsized: SGen[A] = SGen(_ => this)
 }
 
-/**
- * import fpinscala.testing._
- * import fpinscala.state._
- * val rng = RNG.Simple(10)
- * Gen.listOfN(10, State.unit(rng))
- */
 object Gen {
   def unit[A](a: => A): Gen[A] =
     Gen(State.unit(a))
 
+  def unitOption[A](a: Gen[A]): Gen[Option[A]] =
+    a.map(x => Option(x))
+
   def choose(start: Int, stopExclusive: Int): Gen[Int] =
     Gen(State(RNG.nonNegativeInt).map(n => start + n % (stopExclusive-start)))
+
+  def choose2(start: Int, stopExclusive: Int): Gen[(Int, Int)] =
+    choose(start, stopExclusive).map2(choose(start, stopExclusive))(
+      (a, b) => (a, b)
+    )
+
 
   def listOfN[A](n: Int, g: Gen[A]): Gen[List[A]] =
     Gen(State.sequence(List.fill(n)(g.sample)))
@@ -143,6 +168,33 @@ object Gen {
   val boolean: Gen[Boolean] =
     Gen(State(RNG.boolean))
 }
+/*
+ import fpinscala.testing._
+ import fpinscala.state._
+ val rng = RNG.Simple(10)
+ val c = Gen.choose(0, 100)
+ c.sample.run(rng)
+ Gen.listOfN(10, c).sample.run(rng)
+
+ val chars = ('a' to 'z').toList
+ val ci = Gen.choose(0, chars.length)
+ Gen.listOfN(10, ci.map(i => chars(i))).sample.run(rng)
+
+ // 8.5+
+ // generating random strings
+ // doesn't work as expected
+ Gen.listOfN(10, ci.map2(Gen.unit(""))((i, acc) => acc + chars(i))).sample.run(rng)
+
+ // Produces State(random-string, RNG)
+ Gen.listOfN(10, ci.map(i => chars(i)))
+   .map(l => l.foldRight("")((a,z) => z+a))
+   .sample.run(rng)
+
+ val c2 = Gen.choose2(0, 100)
+ c2.sample.run(rng)
+
+
+ */
 
 
 //trait Gen[A] {
@@ -162,3 +214,12 @@ case class SGen[+A](forSize: Int => Gen[A]) {
   def listOf[A](g: Gen[A]): SGen[List[A]] =
     SGen(n => g.listOfN(n))
 }
+/*
+
+ c.unsized.map(i => i + 1)(2).sample.run(rng)
+ Gen.choose(0, 10).unsized.listOf(Gen.unit(5))(3).sample.run(rng)
+ // Produces:
+ // (List[Int], fpinscala.state.RNG) = (List(5, 5, 5),Simple(10))
+ // maybe this is a more proper void?
+ Gen(State.unit(None)).unsized.listOf(Gen.unit(5))(3).sample.run(rng)
+ */
