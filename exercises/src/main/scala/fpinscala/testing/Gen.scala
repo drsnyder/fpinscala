@@ -31,35 +31,72 @@ shell, which you can fill in and modify while working through the chapter.
 // }
 
 
-
-case class Prop(run: (TestCases,RNG) => Result) {
+case class Prop(run: (MaxSize,TestCases,RNG) => Result) {
 
   def &&(p: Prop) = Prop {
-    (c, rng) => run(c, rng) match {
-      case Passed => run(c, rng)
+    (m, c, rng) => run(m, c, rng) match {
+      case Passed => p.run(m, c, rng)
       case other => other
     }
   }
 
   def ||(p: Prop) = Prop {
-    (tc, rng) => run(tc, rng) match {
-      case Falsified(m, s) => tag(m).run(tc, rng)
+    (mx, tc, rng) => run(mx, tc, rng) match {
+      case Falsified(m, s) => tag(m).run(mx, tc, rng)
       case other => other
     }
   }
 
   def tag(msg: String) = Prop {
-    (n,rng) => run(n,rng) match {
+    (m,n,rng) => run(m,n,rng) match {
       case Falsified(f, s) => Falsified(msg + f, s)
       case other => other
     }
   }
 }
+/*
+import fpinscala.testing._
+import fpinscala.state._
+val rng = RNG.Simple(10)
+val smallInt = Gen.choose(-10,10)
+
+// fails because of empty lists
+val maxProp = Prop.forAll(Gen.listOf(smallInt)) { (ns:List[Int]) =>
+  val max = ns.max
+  !ns.exists(_ > max)
+}
+maxProp.run(10, 10, RNG.Simple(System.currentTimeMillis))
+
+// with the new helper function on object Prop
+Prop.run(maxProp, 10, 10)
+
+val maxPropNe = Prop.forAll(Gen.listOf1(smallInt)) { ns =>
+  val max = ns.max
+  !ns.exists(_ > max)
+}
+Prop.run(maxPropNe, 4, 4)
+
+val sortedProp = Prop.forAll(Gen.listOf(smallInt)) { ns =>
+  if (ns.isEmpty) true
+  else {
+    val sorted = ns.sorted
+    val h = sorted.head
+    val t = sorted.last
+    h <= t
+  }
+}
+Prop.run(sortedProp, 10, 10)
+
+Prop.randomStream(smallInt)(RNG.Simple(System.currentTimeMillis)).take(5).zip(Stream.from(0)).take(5).toList
+Stream.from(0).take(5).map(i => Gen.listOf(smallInt)(i).sample.run(RNG.Simple(System.currentTimeMillis))).toList
+
+*/
 
 object Prop {
   type TestCases = Int
   type FailedCase = String
   type SuccessCount = Int
+  type MaxSize = Int
 
   sealed trait Result {
     def isFalsified: Boolean
@@ -81,6 +118,25 @@ object Prop {
     }.find(_.isFalsified).getOrElse(Passed)
   }
 
+
+  def apply(f: (TestCases,RNG) => Result): Prop =
+    Prop { (_,n,rng) => f(n,rng) }
+
+  def forAll[A](g: SGen[A])(f: A => Boolean): Prop =
+    forAll(g(_))(f)
+
+  def forAll[A](g: Int => Gen[A])(f: A => Boolean): Prop = Prop {
+    (max,n,rng) =>
+      val casesPerSize = (n - 1) / max + 1
+      val props: Stream[Prop] =
+        Stream.from(0).take((n min max) + 1).map(i => forAll(g(i))(f))
+      val prop: Prop =
+        props.map(p => Prop { (max, _, rng) =>
+          p.run(max, casesPerSize, rng)
+        }).toList.reduce(_ && _)
+      prop.run(max,n,rng)
+  }
+
   def randomStream[A](g: Gen[A])(rng: RNG): Stream[A] =
     Stream.unfold(rng)(rng => Some(g.sample.run(rng)))
 
@@ -88,6 +144,15 @@ object Prop {
     s"test case: $s\n" +
     s"generated an exception: ${e.getMessage}\n" +
     s"stack trace:\n ${e.getStackTrace.mkString("\n")}"
+
+
+  def run(p: Prop, maxSize: Int = 100, testCases: Int = 100, rng: RNG = RNG.Simple(System.currentTimeMillis)): Unit =
+    p.run(maxSize, testCases, rng) match {
+      case Falsified(msg, n) =>
+        println(s"! Falsified after $n passed tests:\n $msg")
+      case Passed =>
+        println(s"+ OK, passed $testCases tests.")
+    }
 }
 
 // FIXME: why did this work? You can't instantiate a trait? Why?
@@ -128,6 +193,9 @@ case class Gen[+A](sample: State[RNG,A]) {
   def listOfN(size: Gen[Int]): Gen[List[A]] =
     size flatMap (n => this.listOfN(n))
 
+  def listOf1: SGen[List[A]] =
+    Gen.listOf1(this)
+
   def union[A](g1: Gen[A], g2: Gen[A]): Gen[A] =
     boolean.flatMap(b => if (b) g1 else g2)
 
@@ -161,12 +229,18 @@ object Gen {
       (a, b) => (a, b)
     )
 
-
   def listOfN[A](n: Int, g: Gen[A]): Gen[List[A]] =
     Gen(State.sequence(List.fill(n)(g.sample)))
 
   val boolean: Gen[Boolean] =
     Gen(State(RNG.boolean))
+
+  // Does this belong here because the input is g: Gen[A]?
+  def listOf[A](g: Gen[A]): SGen[List[A]] =
+    SGen(n => g.listOfN(n))
+
+  def listOf1[A](g: Gen[A]): SGen[List[A]] =
+    SGen(n => g.listOfN(n max 1))
 }
 /*
  import fpinscala.testing._
