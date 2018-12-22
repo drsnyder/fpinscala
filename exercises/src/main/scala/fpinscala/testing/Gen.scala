@@ -35,7 +35,7 @@ case class Prop(run: (MaxSize,TestCases,RNG) => Result) {
 
   def &&(p: Prop) = Prop {
     (m, c, rng) => run(m, c, rng) match {
-      case Passed => p.run(m, c, rng)
+      case Passed | Proved => p.run(m, c, rng)
       case other => other
     }
   }
@@ -57,6 +57,7 @@ case class Prop(run: (MaxSize,TestCases,RNG) => Result) {
 /*
 import fpinscala.testing._
 import fpinscala.state._
+import fpinscala.parallelism._
 val rng = RNG.Simple(10)
 val smallInt = Gen.choose(-10,10)
 
@@ -90,7 +91,21 @@ Prop.run(sortedProp, 10, 10)
 Prop.randomStream(smallInt)(RNG.Simple(System.currentTimeMillis)).take(5).zip(Stream.from(0)).take(5).toList
 Stream.from(0).take(5).map(i => Gen.listOf(smallInt)(i).sample.run(RNG.Simple(System.currentTimeMillis))).toList
 
+def lt3(i: Int): Boolean = i < 3
+def twt(ns: List[Int]): Boolean =
+  ns.takeWhile(lt3).dropWhile(lt3).isEmpty &&
+  ns.takeWhile(lt3) ++ ns.dropWhile(lt3) == l
+
+  Works manually but not in the test
+val takeWhileProp = Prop.forAll(Gen.listOf1(smallInt)) { ns =>
+  println(ns)
+  ns.takeWhile(lt3).dropWhile(lt3).isEmpty &&
+  ns.takeWhile(lt3) ++ ns.dropWhile(lt3) == l
+}
+Prop.run(takeWhileProp, 10, 10)
+
 */
+
 
 object Prop {
   type TestCases = Int
@@ -103,6 +118,10 @@ object Prop {
   }
 
   case object Passed extends Result {
+    def isFalsified = false
+  }
+
+  case object Proved extends Result {
     def isFalsified = false
   }
 
@@ -152,11 +171,59 @@ object Prop {
         println(s"! Falsified after $n passed tests:\n $msg")
       case Passed =>
         println(s"+ OK, passed $testCases tests.")
+      case Proved =>
+        println("+ OK, passed tests.")
     }
+
+  def check(p: => Boolean): Prop = Prop { (_, _, _) =>
+    if (p) Passed else Falsified("()", 0)
+  }
+
+  val ES: ExecutorService = Executors.newCachedThreadPool
+  val p2 = Prop.check {
+    val p = Par.map(Par.unit(1))(_ + 1)
+    val p2 = Par.unit(2)
+    p(ES).get == p2(ES).get
+  }
+
+  //val p2e = checkPar { equal (
+    //Par.map(Par.unit(1))(_ + 1),
+    //Par.unit(2)
+  //)
+  //}
+
+  def equal[A](p: Par[A], p2: Par[A]): Par[Boolean] =
+    Par.map2(p,p2)(_ == _)
+
+  val p3 = check {
+    equal (
+      Par.map(Par.unit(1))(_ + 1),
+      Par.unit(2)
+    ) (ES) get
+  }
+
+  val S = weighted(
+    choose(1,4).map(Executors.newFixedThreadPool) -> .75,
+    unit(Executors.newCachedThreadPool) -> .25) // `a -> b` is syntax sugar for `(a,b)`
+
+  def forAllPar[A](S: Gen[ExecutorService])(g: Gen[A])(f: A => Par[Boolean]): Prop = {
+    forAll(S.map2(g)((_,_))) { case (s,a) => f(a)(s).get }
+  }
+
+  def checkPar(S: Gen[ExecutorService])(p: Par[Boolean]): Prop =
+    forAllPar(S)(Gen.unit(()))(_ => p)
+
+  def forAllPar2[A](g: Gen[A])(f: A => Par[Boolean]): Prop =
+    forAll(S ** g) { case (s,a) => f(a)(s).get }
 }
 
 // FIXME: why did this work? You can't instantiate a trait? Why?
 /*
+import fpinscala.testing._
+import fpinscala.state._
+import fpinscala.parallelism._
+import java.util.concurrent.Executors
+
 val rng = RNG.Simple(10)
 val g = Gen(State.unit(rng))
 g.listOfN(Gen.unit(10))
@@ -175,6 +242,14 @@ a.run(10, rng)
 
 val t = Prop.forAll(c)(i => i >= 0) || Prop.forAll(d)(even)
 t.run(10, rng)
+
+
+val S = Gen.weighted(Gen.choose(1,4).map(Executors.newFixedThreadPool) -> .75, Gen.unit(Executors.newCachedThreadPool) -> .25)
+val pint = Gen.choose(0,10) map (Par.unit(_))
+Prop.run(Prop.forAllPar(S)(pint)(n => Prop.equal(Par.map(n)(y => y), n)))
+
+val fint = Gen.choose(0,10) map (i => Par.fork(Par.unit(i)))
+Prop.run(Prop.forAllPar(S)(fint)(n => Prop.equal(Par.map(n)(y => y), n)))
 */
 case class Gen[+A](sample: State[RNG,A]) {
   def map[B](f: A => B): Gen[B] =
@@ -199,19 +274,10 @@ case class Gen[+A](sample: State[RNG,A]) {
   def union[A](g1: Gen[A], g2: Gen[A]): Gen[A] =
     boolean.flatMap(b => if (b) g1 else g2)
 
-  def weighted[A](g1: (Gen[A],Double), g2: (Gen[A],Double)): Gen[A] = {
-    val (a, pa) = g1
-    val (b, pb) = g2
-    Gen.choose(0, 100).flatMap(r => {
-        if (r > pa/100) a
-        else {
-          if (r > pb/100) b
-          else this.union(a, b)
-        }
-    })
-  }
-
   def unsized: SGen[A] = SGen(_ => this)
+
+  def **[B](g: Gen[B]): Gen[(A,B)] =
+    (this map2 g)((_,_))
 }
 
 object Gen {
@@ -241,6 +307,16 @@ object Gen {
 
   def listOf1[A](g: Gen[A]): SGen[List[A]] =
     SGen(n => g.listOfN(n max 1))
+
+  def weighted[A](g1: (Gen[A],Double), g2: (Gen[A],Double)): Gen[A] = {
+    val (a, pa) = g1
+    val (b, pb) = g2
+    val g1Threshold = pa.abs / (pa.abs + pb.abs)
+    Gen.choose(0, 100).flatMap(r => {
+        if (r < g1Threshold) a
+        else b
+    })
+  }
 }
 /*
  import fpinscala.testing._
