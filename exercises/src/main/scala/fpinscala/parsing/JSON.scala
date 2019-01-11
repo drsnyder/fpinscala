@@ -14,10 +14,20 @@ object JSON {
 
   def jsonParser[Parser[+_]](P: Parsers[Parser]): Parser[JSON] = {
     import P.{string => _, _}
-    def tok(s: String) = P.token(P.string(s))
+    implicit def tok(s: String) = P.token(P.string(s))
 
-    def lit = tok("true").as(JBool(true))
+    def array = surround("[","]")(
+      value sep "," map (vs => JArray(vs.toIndexedSeq)))
+    def obj = surround("{","}")(
+      keyval sep "," map (kvs => JObject(kvs.toMap)))
+    def keyval = escapedQuoted ** (":" *> value)
+    def lit = "null".as(JNull) |
+      double.map(JNumber(_)) |
+      escapedQuoted.map(JString(_)) |
+      "true".as(JBool(true)) |
+      "false".as(JBool(false))
 
+    def value: Parser[JSON] = lit | obj | array
     root(lit)
   }
 }

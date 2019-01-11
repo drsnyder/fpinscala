@@ -41,25 +41,54 @@
 //run(endsWith("bc"))("bc") == Right(True)
 //run(endsWith("c"))("a") == Right(False)
 
-import fpinscala.parsing._
-def myParser[P[+_]](P: Parsers[P]) = {
-  import P._
-  char('a').many.slice.map(_.size) ** char('b').many1.slice.map(_.size)
-}
-
-trait MyParser[P[+_]] extends Parsers[P] {
-  def ab = 
-    char('a').many.slice.map(_.size) **
-    char('b').many1.slice.map(_.size)
-}
+// import fpinscala.parsing._
+// def myParser[P[+_]](P: Parsers[P]) = {
+//   import P._
+//   char('a').many.slice.map(_.size) ** char('b').many1.slice.map(_.size)
+// }
+// 
+// trait MyParser[P[+_]] extends Parsers[P] {
+//   def ab = 
+//     char('a').many.slice.map(_.size) **
+//     char('b').many1.slice.map(_.size)
+// }
 
 // 9.6
-flatMap(regex("\d+.*".r))(n => listOfN(n.toInt, char('a')))
+// flatMap(regex("\d+.*".r))(n => listOfN(n.toInt, char('a')))
 // answer
-for {
-  digit <- "\d+.r"
-  val n <- digit.toInt
-  _ <- listOfN(n, char('a'))
-}
+// for {
+//   digit <- "\d+.r"
+//   val n <- digit.toInt
+//   _ <- listOfN(n, char('a'))
+// }
 
+// 9.10
+//Given the parser "abra".**(" ".many).**("cadabra"), what sort of error would
+//you like to report given the input "abra cAdabra" (note the capital 'A')? Only
+//something like Expected 'a'? Or Expected "cadabra"? What if you wanted to
+//choose a different error message, like"Magicwordincorrect,tryagain!"?
+// ==
+// I would like to see something like Expected "cadabra" at position 5 or Expected 'a' at position 6.
+
+//Given a or b, if a fails on the input, do we always want to run b, or are there
+//cases where we might not want to? If there are such cases, can you think of
+//addi- tional combinators that would allow the programmer to specify when or
+//should consider the second parser?
+// ==
+// If a was some form of parse error that was caused by malformed input (e.g. unaccepted char)
+// then we probably don't want to proceed with b since we know it too will fail.
+
+// How do you want to handle reporting the location of errors?
+// I think we want to report the position within the string. Ideally we also provide some additional
+// context and as much information as we can to help the programmer fix it.
+
+// Given a or b, if a and b both fail on the input, might we want to support
+// reporting both errors? And do we always want to report both errors, or do we
+// want to give the programmer a way to specify which of the two errors is
+// reported?
+// Yes, I think we want to support reporting both if we decide to execute both.
+
+import fpinscala.parsing.MyParser._
+import fpinscala.parsing.Location
+string("foo")(Location(""))
 

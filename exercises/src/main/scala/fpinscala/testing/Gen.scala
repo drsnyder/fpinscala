@@ -317,6 +317,12 @@ object Gen {
         else b
     })
   }
+
+
+  def stringN(n: Int): Gen[String] =
+    listOfN(n, choose(0,127)).map(_.map(_.toChar).mkString)
+
+  val string: SGen[String] = SGen(stringN)
 }
 /*
  import fpinscala.testing._
@@ -363,6 +369,9 @@ case class SGen[+A](forSize: Int => Gen[A]) {
 
   def listOf[A](g: Gen[A]): SGen[List[A]] =
     SGen(n => g.listOfN(n))
+
+  def **[B](s2: SGen[B]): SGen[(A,B)] =
+    SGen(n => apply(n) ** s2(n))
 }
 /*
 

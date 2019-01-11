@@ -1,5 +1,6 @@
 package fpinscala.parsing
 
+import java.util.regex._
 import scala.util.matching.Regex
 import fpinscala.testing._
 import fpinscala.testing.Prop._
@@ -75,11 +76,25 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
 
   def label[A](msg: String)(p: Parser[A]): Parser[A]
 
+  def scope[A](msg: String)(p: Parser[A]): Parser[A]
+
   def token[A](p: Parser[A]): Parser[A] =
     attempt(p) <* whitespace
 
+  def thru(s: String): Parser[String] = (".*?"+Pattern.quote(s)).r
+
   def whitespace: Parser[String] = "\\s*".r
   def number: Parser[String] = "\\d+".r
+  def doubleString: Parser[String] =
+    token("[-+]?([0-9]*\\.)?[0-9]+([eE][-+]?[0-9]+)?".r)
+  def double: Parser[Double] =
+    doubleString map (_.toDouble) label "double literal"
+
+  def quoted: Parser[String] =
+    string("\"") *> thru("\"").map(_.dropRight(1))
+
+  def escapedQuoted: Parser[String] =
+    token(quoted label "string literal")
 
   def surround[A](start: Parser[Any], stop: Parser[Any])(p: => Parser[A]) =
     start *> p <* stop
@@ -115,7 +130,10 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
     def as[B](b: B): Parser[B] = self.map(self.slice(p))(_ => b)
     def *>[B](p2: => Parser[B]) = self.skipL(p, p2)
     def <*(p2: => Parser[Any]) = self.skipR(p, p2)
+    def sep(separator: Parser[Any]) = self.sep(p, separator)
+    def sep1(separator: Parser[Any]) = self.sep1(p, separator)
     def label(msg: String): Parser[A] = self.label(msg)(p)
+    def scope(msg: String): Parser[A] = self.scope(msg)(p)
     def token = self.token(p)
   }
 
@@ -145,6 +163,19 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
 
     def productLaw2[A,B,C](a: Parser[A], b: Parser[B], c: Parser[C])(in: Gen[String]): Prop =
       equal((a ** b) ** c map (unbiasL _), a ** (b ** c) map (unbiasR _))(in)
+
+		def labelLaw[A](p: Parser[A], inputs: SGen[String]): Prop =
+			forAll(inputs ** Gen.string) {
+        case (input, msg) =>
+          run(label(msg)(p))(input) match {
+            case Left(e) => e == msg
+            case _ => true
+          }
+      }
+
+    // Need to represent fail
+		//def attemptLaw[A](p: Parser[A], p2: Parser[A])(in: Gen[String]): Prop =
+      //forAll(in)(s => run(attempt(p flatMap (_ => fail)) or p2 == p2)(s))
   }
 }
 
