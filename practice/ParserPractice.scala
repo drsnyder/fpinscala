@@ -89,6 +89,25 @@
 // Yes, I think we want to support reporting both if we decide to execute both.
 
 import fpinscala.parsing.MyParser._
+import fpinscala.parsing.MyParserTypes._
 import fpinscala.parsing.Location
-string("foo")(Location(""))
+import fpinscala.parsing.JSON
+string("foo")(ParseState(Location("")))
 
+regex("(\\d+).*".r)(ParseState(Location("10")))
+succeed("foo")(ParseState(Location("")))
+slice(regex("(\\d+).*".r))(ParseState(Location("10abc")))
+scope("int-slice")(slice(regex("(\\d+).*".r)))(ParseState(Location("a10abc")))
+
+val js = """{
+  "scala": "is fun"
+}"""
+
+val P = fpinscala.parsing.MyParser
+import fpinscala.parsing.MyParserTypes.MyParser
+
+def printResult[E](e: Either[E,JSON]) =
+  e.fold(println, println)
+
+val json: MyParser[JSON] = JSON.jsonParser(P)
+P.run(json)(js)

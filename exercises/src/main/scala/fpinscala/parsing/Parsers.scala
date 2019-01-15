@@ -22,7 +22,8 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
 
   def or[A](s1: Parser[A], s2: => Parser[A]): Parser[A]
 
-  def many[A](p: Parser[A]): Parser[List[A]]
+  def many[A](p: Parser[A]): Parser[List[A]] =
+    succeed(List[A]()).map(s => s) | map2(p, p.map(pp => List(pp)))(_ :: _)
 
   // define in terms of or, map2, and succeed
   def many_v2[A](p: Parser[A]): Parser[List[A]] =
@@ -42,7 +43,8 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
     map2(p, many(p))(_ :: _)
 
 
-  def product[A,B](p: Parser[A], p2: => Parser[B]): Parser[(A,B)]
+  def product[A,B](p: Parser[A], p2: => Parser[B]): Parser[(A,B)] =
+    flatMap(p)(a => map(p2)(b => (a, b)))
 
   // 9.7
   def product2[A,B](p: Parser[A], p2: => Parser[B]): Parser[(A,B)] =
@@ -56,13 +58,12 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
     } yield f(a,b)
 
   def map[A,B](p: Parser[A])(f: A => B): Parser[B] =
-    flatMap(p)(a => succeed(f(a)))
+    flatMap(p)(f andThen succeed)
 
   def map2[A,B,C](p: Parser[A], p2: => Parser[B])(f: (A,B) => C): Parser[C] =
     map(product(p, p2))(f.tupled)
 
-  def succeed[A](a: A): Parser[A] =
-    string("") map (_ => a)
+  def succeed[A](a: A): Parser[A]
 
   def flatMap[A,B](p: Parser[A])(f: A => Parser[B]): Parser[B]
 
@@ -110,7 +111,8 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
   def sep1[A](p: Parser[A], p2: Parser[Any]): Parser[List[A]] =
     map2(p, many(p2 *> p))(_ :: _)
 
-  def root[A](p: Parser[A]): Parser[A]
+  def root[A](p: Parser[A]): Parser[A] =
+    p <* eof
 
   case class ParserOps[A](p: Parser[A]) {
     def |[B>:A](p2: Parser[B]): Parser[B] = self.or(p,p2)
@@ -187,7 +189,8 @@ case class Location(input: String, offset: Int = 0) {
   def toError(msg: String): ParseError =
     ParseError(List((this, msg)))
 
-  def advanceBy(n: Int) = copy(offset = offset+n)
+  def advanceBy(n: Int) =
+    copy(offset = offset + n)
 
   /* Returns the line corresponding to this location */
   def currentLine: String = 
@@ -197,6 +200,18 @@ case class Location(input: String, offset: Int = 0) {
 
 case class ParseError(stack: List[(Location,String)] = List(),
                       otherFailures: List[ParseError] = List()) {
+
+  def push(loc: Location, msg: String): ParseError =
+    copy(stack = (loc, msg) :: stack)
+
+  def label[A](s: String): ParseError =
+    ParseError(latestLoc.map((_,s)).toList)
+
+  def latestLoc: Option[Location] =
+    latest map (_._1)
+
+  def latest: Option[(Location,String)] =
+    stack.lastOption
 }
 
 object Parsers {
