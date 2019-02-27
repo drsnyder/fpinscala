@@ -52,9 +52,28 @@ object Monoid {
     val zero = m.zero
   }
 
+  def mapMergeMonoid[K,V](V: Monoid[V]): Monoid[Map[K, V]] = new Monoid[Map[K, V]] {
+    def zero = Map[K, V]()
+    def op(a: Map[K, V], b: Map[K, V]) =
+      (a.keySet ++ b.keySet).foldLeft(zero) { (acc, k) =>
+        acc.updated(k, V.op(a.getOrElse(k, V.zero), b.getOrElse(k, V.zero)))
+    }
+  }
+
   def productMonoid[A,B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] = new Monoid[(A,B)] {
     def op(a: (A,B), b: (A,B)): (A, B) = (a, b) match { case ((aa, ab), (ba, bb)) => (A.op(aa, ba), B.op(ab, bb)) }
     def zero = (A.zero, B.zero)
+  }
+
+
+  def functionMonoid[A,B](B: Monoid[B]): Monoid[A => B] = new Monoid[A => B] {
+    def op(x: A => B, y: A => B): A => B = (a: A) => B.op(x(a), y(a))
+    val zero = (a: A) => B.zero
+  }
+
+  def bag[A](as: IndexedSeq[A]): Map[A, Int] = {
+    val bagger = mapMergeMonoid[A, Int](intAddition)
+    IndexedSeqFoldable.foldMap(as)(a => Map(a -> 1))(bagger)
   }
 
   def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop =
@@ -303,8 +322,19 @@ object MonoidTest {
      ).equals(List("a", "b", "c"))
     )
 
+    println(
+      Monoid.bag(Vector("a", "rose", "is", "a", "rose"))
+    )
+
     val stubs = Gen.stringN(100).map(s => Monoid.Stub(s))
     Prop.run(Monoid.monoidLaws(Monoid.wcMonoid, stubs))
+
+    val m = Monoid.productMonoid(Monoid.intAddition, Monoid.intAddition)
+    val p = ListFoldable.foldMap(List(1,2,3,4))(a => (1, a))(m)
+    assert(
+      p.equals((4, 10))
+    )
+
   }
 
 }

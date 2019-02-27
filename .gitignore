@@ -10,5 +10,6 @@ project.vim
 .project
 .classpath
 .metadata/
+.metals
 **/*.iml
 **/*.class

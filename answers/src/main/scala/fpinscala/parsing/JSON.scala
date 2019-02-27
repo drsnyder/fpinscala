@@ -66,18 +66,18 @@ object JSONExample extends App {
 ]
 """
 
-  val P = fpinscala.parsing.Reference
-  import fpinscala.parsing.ReferenceTypes.Parser
-  import fpinscala.parsing.JSON
+  // val P = fpinscala.parsing.Reference
+  // import fpinscala.parsing.ReferenceTypes.Parser
+  // import fpinscala.parsing.JSON
 
 
-  def printResult[E](e: Either[E,JSON]) =
-    e.fold(println, println)
+  // def printResult[E](e: Either[E,JSON]) =
+  //   e.fold(println, println)
 
-  val json: Parser[JSON] = JSON.jsonParser(P)
-  printResult { P.run(json)(jsonTxt) }
-  println("--")
-  printResult { P.run(json)(malformedJson1) }
-  println("--")
-  printResult { P.run(json)(malformedJson2) }
+  // val json: Parser[JSON] = JSON.jsonParser(P)
+  // printResult { P.run(json)(jsonTxt) }
+  // println("--")
+  // printResult { P.run(json)(malformedJson1) }
+  // println("--")
+  // printResult { P.run(json)(malformedJson2) }
 }
