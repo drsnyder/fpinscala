@@ -46,8 +46,13 @@ trait Monad[M[_]] extends Functor[M] {
   // listOfN-- for lists, it generates all the possible permutations of what's
   // "inside" M[A] n times
   // for Option it will repeat what's inside the option n times
-  def replicateM[A](n: Int, ma: M[A]): M[List[A]] =
+  def replicateM[A](n: Int)(ma: M[A]): M[List[A]] =
     sequence(List.fill(n)(ma))
+  // def replicateM[A](n: Int, ma: M[A]): M[List[A]] =
+  //   replicateM(n)(ma)
+    //sequence(List.fill(n)(ma))
+
+
 
   def product[A,B](ma: M[A], mb: M[B]): M[(A, B)] =
     map2(ma, mb)((_, _))
