@@ -52,6 +52,10 @@ trait Monad[M[_]] extends Functor[M] {
   //   replicateM(n)(ma)
     //sequence(List.fill(n)(ma))
 
+  def forever[A,B](a: M[A]): M[B] = {
+    lazy val t: M[B] = forever(a)
+    flatMap(a)(_ => t)
+  }
 
 
   def product[A,B](ma: M[A], mb: M[B]): M[(A, B)] =
