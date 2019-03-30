@@ -11,7 +11,7 @@ object IO0 {
   may perform I/O. Has a simple 'interpreter' baked in--the `run`
   function, which just returns `Unit`.
 
-                             */
+   */
   trait IO { self =>
     def run: Unit
     def ++(io: IO): IO = new IO {
@@ -29,7 +29,7 @@ object IO0 {
   is completely _opaque_. Also cannot represent _input_ effects, like
   reading from console, for instance:
 
-                             */
+   */
 
   def fahrenheitToCelsius(f: Double): Double =
     (f - 32) * 5.0/9.0
@@ -47,7 +47,7 @@ object IO0 {
     val prompt: IO = PrintLine("Enter a temperature in degrees fahrenheit: ")
     // now what ???
   }
-  */
+ */
 }
 
 object IO1 {
@@ -56,7 +56,7 @@ object IO1 {
   We need a way for our `IO` actions to yield a result of some
   meaningful type. We do this by adding a type parameter to `IO`,
   which now forms a `Monad`.
-                             */
+   */
 
   sealed trait IO[A] { self =>
     def run: A
@@ -127,7 +127,7 @@ object IO1 {
      factorial: 5040
      q
 
-                             */
+   */
   val helpstring = """
   | The Amazing Factorial REPL, v2.0
   | q - quit
@@ -164,7 +164,7 @@ object IO2a {
 
   The general solution is to make the `IO` type into a data type that we
   interpret using a tail recursive loop, using pattern matching.
-  */
+   */
 
   sealed trait IO[A] {
     def flatMap[B](f: A => IO[B]): IO[B] =
@@ -358,7 +358,7 @@ object IO3 {
   /*
   We can generalize `TailRec` and `Async` to the type `Free`, which is
   a `Monad` for any choice of `F`.
-  */
+   */
 
   sealed trait Free[F[_],A] {
     def flatMap[B](f: A => Free[F,B]): Free[F,B] =
@@ -372,11 +372,24 @@ object IO3 {
                                f: A => Free[F, B]) extends Free[F, B]
 
   // Exercise 1: Implement the free monad
-  def freeMonad[F[_]]: Monad[({type f[a] = Free[F,a]})#f] = ???
+  def freeMonad[F[_]]: Monad[({type f[a] = Free[F,a]})#f] =
+   new Monad[({type f[a] = Free[F,a]})#f] {
+      def unit[A](a: => A) = Return(a)
+      override def flatMap[A,B](ma: Free[F,A])(f: A => Free[F,B]): Free[F,B] =
+        ma flatMap f
+  }
 
   // Exercise 2: Implement a specialized `Function0` interpreter.
   // @annotation.tailrec
-  def runTrampoline[A](a: Free[Function0,A]): A = ???
+  def runTrampoline[A](a: Free[Function0,A]): A = a match {
+    case Return(a) => a
+    case Suspend(r) => r()
+    case FlatMap(x, f) => x match {
+      case Return(a) => runTrampoline(f(a))
+      case Suspend(r) => runTrampoline(f(r()))
+      case FlatMap(y, g) => runTrampoline(y flatMap (a => g(a) flatMap f))
+    }
+  }
 
   // Exercise 3: Implement a `Free` interpreter which works for any `Monad`
   def run[F[_],A](a: Free[F,A])(implicit F: Monad[F]): F[A] = ???
@@ -389,7 +402,7 @@ object IO3 {
   The type constructor `F` lets us control the set of external requests our
   program is allowed to make. For instance, here is a type that allows for
   only console I/O effects.
-  */
+   */
 
   import fpinscala.parallelism.Nonblocking.Par
 
@@ -443,7 +456,7 @@ object IO3 {
   (if we want to evaluate it sequentially) or a `Par`.
 
   We introduce the following type to do this translation:
-  */
+   */
 
   /* Translate between any `F[A]` to `G[A]`. */
   trait Translate[F[_], G[_]] { def apply[A](f: F[A]): G[A] }
@@ -485,7 +498,7 @@ object IO3 {
   because it relies of the stack safety of the underlying monad, and the
   `Function0` monad we gave is not stack safe. To see the problem, try
   running: `freeMonad.forever(Console.printLn("Hello"))`.
-  */
+   */
 
   // Exercise 4 (optional, hard): Implement `runConsole` using `runFree`,
   // without going through `Par`. Hint: define `translate` using `runFree`.
@@ -498,7 +511,7 @@ object IO3 {
   There is nothing about `Free[Console,A]` that requires we interpret
   `Console` using side effects. Here are two pure ways of interpreting
   a `Free[Console,A]`.
-  */
+   */
   import Console._
 
   case class Buffers(in: List[String], out: Vector[String])
