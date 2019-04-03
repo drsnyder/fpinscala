@@ -509,12 +509,23 @@ object IO3 {
   because it relies of the stack safety of the underlying monad, and the
   `Function0` monad we gave is not stack safe. To see the problem, try
   running: `freeMonad.forever(Console.printLn("Hello"))`.
+  runConsoleFunction0(freeMonad.forever(Console.printLn("Hello"))).apply
+  runConsoleFunction0(freeMonad.replicateM(2)(Console.printLn("Hello"))).apply
    */
 
   // Exercise 4 (optional, hard): Implement `runConsole` using `runFree`,
   // without going through `Par`. Hint: define `translate` using `runFree`.
 
-  def translate[F[_],G[_],A](f: Free[F,A])(fg: F ~> G): Free[G,A] = ???
+  /*
+  Note that run ConsoleReader and runConsoleState aren’t stack-safe as
+  implemented,for the same reason that runConsoleFunction0 wasn’t stack-safe.
+  We can fix this by changing the representations to String => TailRec[A] for
+  ConsoleReader and Buffers => TailRec[(A,Buffers)] for ConsoleState.
+  */
+
+  def translate[F[_],G[_],A](f: Free[F,A])(fg: F ~> G): Free[G,A] =
+    ???
+
 
   def runConsole[A](a: Free[Console,A]): A = ???
 
@@ -572,6 +583,10 @@ object IO3 {
 
   def runConsoleState[A](io: ConsoleIO[A]): ConsoleState[A] =
     runFree[Console,ConsoleState,A](io)(consoleToState)
+
+  /*
+  runConsoleReader(freeMonad.replicateM(2)(Console.printLn("Hello"))).run("aaa")
+  */
 
   // So `Free[F,A]` is not really an I/O type. The interpreter `runFree` gets
   // to choose how to interpret these `F` requests, and whether to do "real" I/O
