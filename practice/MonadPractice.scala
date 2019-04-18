@@ -21,6 +21,7 @@ To run a monte carlo simulation we need as inputs
 object MonadPractice {
     import Monad._
     import Reader._
+    import State._
 
     def get[S]: State[S, S] = State(s => (s, s))
 
@@ -36,8 +37,8 @@ object MonadPractice {
     def zipWithIndex[A](as: List[A]): List[(Int,A)] =
         as.foldLeft(F.unit(List[(Int, A)]()))((acc,a) => for {
             xs <- acc
-            n  <- get
-            _  <- set(n + 1)
+            n  <- sget
+            _  <- sset(n + 1)
         } yield (n, a) :: xs).run(0)._1.reverse
 
     def run() = {
@@ -46,20 +47,36 @@ object MonadPractice {
         )
 
         println(
-            stateMonad.replicateM(3, modify[Int](i => i + 1)).run(4)
+            stateMonad.replicateM(3)(modify[Int](i => i + 1)).run(4)
+        )
+
+        val doubles = stateMonad.replicateM(100)(modify[(Double, RNG)](r => RNG.double(r._2)))
+            .run(RNG.double(RNG.Simple(10)))
+            ._1
+            .map(_._1)
+        val doublePairs = doubles
+            .take(100)
+            .sliding(2)
+            .map { case List(a, b) => (a, b) }
+            .toList
+        val doubles2 = RNG.doubles(10)(RNG.Simple(10))._1
+        val doublePairs2 = doubles2 zip doubles2.tail
+
+        println(
+            doublePairs2
         )
 
         println(
-            stateMonad.replicateM(8, modify[IntPair](
+            stateMonad.replicateM(8)(modify[IntPair](
                 { case (a, b) => (b, a + b) }
             )).run((0, 1))
         )
 
         println(
-            stateMonad.replicateM(8, modify[IntPair](
+            stateMonad.replicateM(8)(modify[IntPair](
                 { case (a, b) => (b, a + b) }
             )).run((0, 1))
-            ._1.map(_._2)
+            ._1
         )
 
         println(
@@ -67,7 +84,7 @@ object MonadPractice {
         )
 
         println(
-            optionMonad.replicateM(4, Option(1))
+            optionMonad.replicateM(4)(Option(1))
         )
 
         optionMonad.filterM(List(Some(1), Some(2)))(c => Option(true))
@@ -84,7 +101,7 @@ object MonadPractice {
         for { a <- Id("Hello, "); b <- Id("monad!") } yield a + b
 
         println(
-            readerMonad[String].replicateM(3, Reader((s: String) => s.toUpperCase)).run("five")
+            readerMonad[String].replicateM(3)(Reader((s: String) => s.toUpperCase)).run("five")
         )
     }
 }

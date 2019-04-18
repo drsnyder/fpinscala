@@ -18,6 +18,11 @@ object RNG {
       val n = (newSeed >>> 16).toInt // `>>>` is right binary shift with zero fill. The value `n` is our new pseudo-random integer.
       (n, nextRNG) // The return value is a tuple containing both a pseudo-random integer and the next `RNG` state.
     }
+
+    def nextDouble: (Double, RNG) = {
+      val (n, nextRNG) = nextInt
+      double(nextRNG)
+    }
   }
 
   type Rand[+A] = RNG => (A, RNG)
@@ -119,7 +124,7 @@ object RNG {
   def _ints(count: Int): Rand[List[Int]] =
     sequence(List.fill(count)(int))
 
-  def _doubles(count: Int): Rand[List[Double]] =
+  def doubles(count: Int): Rand[List[Double]] =
     sequence(List.fill(count)(double))
 
   def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] =
@@ -131,7 +136,7 @@ object RNG {
   def _map[A,B](s: Rand[A])(f: A => B): Rand[B] =
     flatMap(s)(v => unit(f(v)))
 
-  def _map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = 
+  def _map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] =
     flatMap(ra)(a => _map(rb)(b => f(a, b)))
 
   def _doublem: Rand[Double] =
@@ -161,7 +166,7 @@ import State._
 
 // TODO: 6.10
 case class State[S,+A](run: S => (A, S)) {
-  def map[B](f: A => B): State[S, B] = 
+  def map[B](f: A => B): State[S, B] =
     flatMap(a => unit(f(a)))
 
   def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] =
@@ -185,7 +190,7 @@ object State {
 
   def unit[S, A](a: A): State[S, A] =
     State(state => (a, state))
-  
+
   def sequence[S, A](fs: List[State[S, A]]): State[S, List[A]] =
     fs.foldRight(unit[S, List[A]](List()))((f, acc) => f.map2(acc)(_ :: _))
 

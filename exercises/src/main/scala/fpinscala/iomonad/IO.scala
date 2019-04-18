@@ -4,6 +4,8 @@ import language.postfixOps
 import language.higherKinds
 import scala.io.StdIn.readLine
 
+import fpinscala.state._
+
 object IO0 {
                             /*
 
@@ -523,11 +525,19 @@ object IO3 {
   ConsoleReader and Buffers => TailRec[(A,Buffers)] for ConsoleState.
   */
 
-  def translate[F[_],G[_],A](f: Free[F,A])(fg: F ~> G): Free[G,A] =
-    ???
+  def translate[F[_],G[_],A](f: Free[F,A])(fg: F ~> G): Free[G,A] = {
+    type FreeG[A] = Free[G,A]
+    val t = new (F ~> FreeG) {
+      def apply[A](a: F[A]): Free[G,A] = Suspend { fg(a) }
+    }
+    runFree(f)(t)(freeMonad[G])
+  }
 
 
-  def runConsole[A](a: Free[Console,A]): A = ???
+  def runConsole[A](a: Free[Console,A]): A =
+   runTrampoline { translate(a)(new (Console ~> Function0) {
+     def apply[A](c: Console[A]) = c.toThunk
+  })}
 
   /*
   There is nothing about `Free[Console,A]` that requires we interpret
@@ -586,6 +596,7 @@ object IO3 {
 
   /*
   runConsoleReader(freeMonad.replicateM(2)(Console.printLn("Hello"))).run("aaa")
+  runConsoleState(freeMonad.replicateM(2)(Console.printLn("Hello"))).run("aaa")
   */
 
   // So `Free[F,A]` is not really an I/O type. The interpreter `runFree` gets
