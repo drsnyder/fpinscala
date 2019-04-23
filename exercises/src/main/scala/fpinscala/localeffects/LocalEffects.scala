@@ -127,6 +127,49 @@ object STArray {
     })
 }
 
+import scala.collection.mutable.HashMap
+
+sealed abstract class STHashMap[S,K,V] {
+  protected def table: HashMap[K,V]
+
+  def size: ST[S, Int] = ST(table.size)
+
+  def put(k: K, v: V): ST[S, Unit] = new ST[S, Unit] {
+    def run(s: S) = {
+      table.put(k, v)
+      ((), s)
+    }
+  }
+
+  def +=(kv: (K, V)): ST[S, Unit] = ST(table += kv)
+  def -=(k: K): ST[S, Unit] = ST(table -= k)
+
+  def apply(k: K): ST[S, Option[V]] = ST(table.get(k))
+  def get(k: K): ST[S, Option[V]] = ST(table.get(k))
+
+  def freeze: ST[S, HashMap[K, V]] = ST(table)
+
+  def fill(xs: Map[K, V]): ST[S, Unit] = new ST[S, Unit] {
+    def run(s: S) = {
+      for ((k, v) <- xs)
+        table.put(k, v)
+      ((), s)
+    }
+  }
+}
+
+object STHashMap {
+  def empty[S,K,V]: ST[S, STHashMap[S,K,V]] = ST(new STHashMap[S,K,V] {
+    val table = HashMap.empty[K,V]
+  })
+
+  def fromMap[S,K,V](m: HashMap[K,V]): ST[S, STHashMap[S,K,V]] = ST(new STHashMap[S,K,V] {
+    val table = HashMap.empty[K,V]
+    for(kv <- m)
+      table += kv
+  })
+}
+
 object Immutable {
   def noop[S] = ST[S,Unit](())
 
@@ -163,7 +206,34 @@ object Immutable {
         sorted <- arr.freeze
       } yield sorted
   })
+
+  // case class STOpt[S, A](value: Option[ST[S, Unit]]) {
+  //   def map[B](f: Unit => Unit): STOpt[S, Unit] =
+  //     STOpt(value.map(optA => optA.map(f)))
+  //   def flatMap[B](f: A => STOpt[S, Unit]): STOpt[S, Unit]
+  // }
+  // case class STOpt[S, A](value: ST[S, Option[A]]) {
+  //   def map[B](f: A => B): STOpt[S, Option[B]] =
+  //     STOpt(value.map(optA => optA.map(a => Some(f(a)))))
+  //   def flatMap[B](f: A => STOpt[S, Unit]): STOpt[S, Unit]
+  // }
+
+  def incMap(m: HashMap[String, Int], ks: List[String]): HashMap[String, Int] =
+    if (m.isEmpty) m
+    else ST.runST(new RunnableST[HashMap[String, Int]] {
+      def apply[S] = for {
+        m <- STHashMap.fromMap(m)
+        _ <- ks.foldLeft(noop[S])((s, k) => for {
+          _ <- s
+          ov <- m.get(k)
+          _ <- (for {
+            v <- ov
+           } yield m.put(k, v + 1)) match {
+             case Some(s) => s
+             case None => noop[S]
+           }
+        } yield ())
+        newm <- m.freeze
+      } yield newm
+    })
 }
-
-import scala.collection.mutable.HashMap
-
