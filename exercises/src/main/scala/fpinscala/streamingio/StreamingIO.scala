@@ -136,7 +136,15 @@ object SimpleStreamTransducers {
     /*
      * Exercise 5: Implement `|>`. Let the types guide your implementation.
      */
-    def |>[O2](p2: Process[O,O2]): Process[I,O2] = ???
+    def |>[O2](p2: Process[O,O2]): Process[I,O2] = p2 match {
+      case Halt() => Halt()
+      case Emit(h, t) => Emit(h, this |> t)
+      case Await(f) => this match {
+        case Emit(h, t) => t |> f(Some(h))
+        case Halt() => Halt() |> f(None)
+        case Await(g) => Await(i => g(i) |> p2)
+      }
+    }
 
     /*
      * Feed `in` to this `Process`. Uses a tail recursive loop as long
@@ -200,7 +208,30 @@ object SimpleStreamTransducers {
     /*
      * Exercise 6: Implement `zipWithIndex`.
      */
-    def zipWithIndex: Process[I,(O,Int)] = ???
+    def zipWithIndex: Process[I,(O,Int)] = {
+      zip(this, count map (_  -1))
+      // def go(idx: Int): Process[I,(I,Int)] =
+      //   await(i => emit((i, idx)), go(idx + 1))
+      // go(0)
+    }
+
+    def zip[A,B,C](p1: Process[A,B], p2: Process[A,C]): Process[A,(B,C)] =
+      (p1, p2) match {
+        case (Halt(), _) => Halt()
+        case (_, Halt()) => Halt()
+        case (Emit(a, t1), Emit(b, t2)) => Emit((a, b), zip(t1, t2))
+        case (Await(recv1), _) =>
+          Await((oa: Option[A]) => zip(recv1(oa), feed(oa)(p2)))
+        case (_, Await(recv2)) =>
+          Await((oa: Option[A]) => zip(feed(oa)(p1), recv2(oa)))
+      }
+
+    def feed[A,B](oa: Option[A])(p: Process[A,B]): Process[A,B] =
+      p match {
+        case Halt() => p
+        case Emit(h,t) => Emit(h, feed(oa)(t))
+        case Await(recv) => recv(oa)
+      }
 
     /* Add `p` to the fallback branch of this process */
     def orElse(p: Process[I,O]): Process[I,O] = this match {
@@ -292,13 +323,42 @@ object SimpleStreamTransducers {
     /*
      * Exercise 1: Implement `take`, `drop`, `takeWhile`, and `dropWhile`.
      */
-    def take[I](n: Int): Process[I,I] = ???
+    def take[I](n: Int): Process[I,I] = {
+      def go(count: Int): Process[I, I] =
+        if (count >= n) Halt()
+        else await(i => emit(i, go(count + 1)))
+      go(0)
+    }
 
-    def drop[I](n: Int): Process[I,I] = ???
 
-    def takeWhile[I](f: I => Boolean): Process[I,I] = ???
+    def drop[I](n: Int): Process[I,I] = {
+      def go(count: Int): Process[I,I] =
+        if (count >= n) await(i => emit(i, go(count + 1)))
+        else Await[I,I] {
+          case Some(i) => go(count + 1)
+          case None => Halt()
+        }
+      go(0)
+    }
 
-    def dropWhile[I](f: I => Boolean): Process[I,I] = ???
+    def takeWhile[I](f: I => Boolean): Process[I,I] = {
+      def go(): Process[I,I] = Await[I,I] {
+        case Some(i) if f(i) => emit(i, go())
+        case _ => Halt()
+      }
+      go()
+    }
+
+    def dropWhile[I](f: I => Boolean): Process[I,I] = {
+      def go(ignore: Boolean): Process[I,I] =
+        if (ignore) await(i => emit(i, go(true)))
+        else Await[I,I] {
+          case Some(i) if f(i) => go(false)
+          case Some(i) => go(true)
+          case _ => Halt()
+      }
+      go(false)
+    }
 
     /* The identity `Process`, just repeatedly echos its input. */
     def id[I]: Process[I,I] = lift(identity)
@@ -306,7 +366,12 @@ object SimpleStreamTransducers {
     /*
      * Exercise 2: Implement `count`.
      */
-    def count[I]: Process[I,Int] = ???
+    def count[I]: Process[I,Int] = {
+      def go(count: Int): Process[I,Int] =
+        await(d => emit(count, go(count + 1)))
+      go(0)
+    }
+
 
     /* For comparison, here is an explicit recursive implementation. */
     def count2[I]: Process[I,Int] = {
@@ -318,7 +383,11 @@ object SimpleStreamTransducers {
     /*
      * Exercise 3: Implement `mean`.
      */
-    def mean: Process[Double,Double] = ???
+    def mean: Process[Double,Double] = {
+      def go(s: Double, count: Int): Process[Double, Double] =
+        await(i => emit((s + i)/(count + 1), go(s + i, count + 1)))
+      go(0.0, 0)
+    }
 
     def loop[S,I,O](z: S)(f: (I,S) => (O,S)): Process[I,O] =
       await((i: I) => f(i,z) match {
@@ -327,9 +396,11 @@ object SimpleStreamTransducers {
 
     /* Exercise 4: Implement `sum` and `count` in terms of `loop` */
 
-    def sum2: Process[Double,Double] = ???
+    def sum2: Process[Double,Double] =
+      loop(0.0)((a, b) => (a + b, a + b))
 
-    def count3[I]: Process[I,Int] = ???
+    def count3[I]: Process[I,Int] =
+      loop(0)((a: I, b: Int) => (b + 1, b + 1))
 
     /*
      * Exercise 7: Can you think of a generic combinator that would
@@ -356,7 +427,9 @@ object SimpleStreamTransducers {
      * We choose to emit all intermediate values, and not halt.
      * See `existsResult` below for a trimmed version.
      */
-    def exists[I](f: I => Boolean): Process[I,Boolean] = ???
+    def exists[I](f: I => Boolean): Process[I,Boolean] =
+       await((i: I) => emit(f(i), exists(f))).repeat |> filter(x => x) |> take(1)
+       // lift(f) |> any
 
     /* Awaits then emits a single value, then halts. */
     def echo[I]: Process[I,I] = await(i => emit(i))
@@ -384,6 +457,11 @@ object SimpleStreamTransducers {
       try go(s.getLines, p, z)
       finally s.close
     }
+    // There is also a global implicit executor
+    // import fpinscala.streamingio.SimpleStreamTransducers.Process._
+    // import fpinscala.iomonad.unsafePerformIO
+    // import java.util.concurrent.Executors
+    // unsafePerformIO(processFile(f, count |> exists(_ > 10), false)(_ || _))(Executors.newCachedThreadPool)
 
     /*
      * Exercise 9: Write a program that reads degrees fahrenheit as `Double` values from a file,
@@ -392,7 +470,61 @@ object SimpleStreamTransducers {
 
     def toCelsius(fahrenheit: Double): Double =
       (5.0 / 9.0) * (fahrenheit - 32.0)
+
+    def fToC(in: java.io.File): Seq[Double] = {
+      val i = io.Source.fromFile(in)
+      try {
+        val lines = i.getLines
+        lines
+          .filter(!_.isEmpty)
+          .filter(!_.startsWith("#"))
+          .map(_.toDouble)
+          .map(toCelsius)
+          .toList
+      }
+      finally i.close
+    }
+
+    def convertF: Process[String, String] =
+      filter((line: String) => !line.startsWith("#")) |>
+      filter(line => line.trim.nonEmpty) |>
+      lift(line => toCelsius(line.toDouble).toString)
+
+    import java.io.PrintWriter
+    def convertInOut(in: java.io.File, p: Process[String, String], out: java.io.File) = IO {
+      @annotation.tailrec
+      def go(ss: Iterator[String], cur: Process[String, String], out: PrintWriter): Unit = {
+        cur match {
+          case Halt() => Unit
+          case Await(recv) => {
+            val next = if (ss.hasNext) recv(Some(ss.next))
+                       else recv(None)
+            go(ss, next, out)
+          }
+          case Emit(h, t) => {
+            out.write(h + "\n")
+            go(ss, t, out)
+          }
+        }
+      }
+      val s = io.Source.fromFile(in)
+      val o = new PrintWriter(out)
+      try go(s.getLines, p, o)
+      finally {
+        s.close
+        o.flush
+        o.close
+      }
+    }
+
+
+    import java.util.concurrent.Executors
+    import java.io.File
+    def runC = unsafePerformIO(convertInOut(new File("temps.txt"), convertF, new File("temps-out.txt")))(Executors.newCachedThreadPool)
   }
+
+
+
 }
 
 object GeneralizedStreamTransducers {
@@ -503,7 +635,18 @@ object GeneralizedStreamTransducers {
      * below, this is not tail recursive and responsibility for stack safety
      * is placed on the `Monad` instance.
      */
-    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = ???
+    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = {
+      def go(cur: Process[F,O], acc: IndexedSeq[O]): F[IndexedSeq[O]] = {
+        cur match {
+          case Emit(h,t) => go(t, acc :+ h)
+          case Halt(End) => F.unit(acc)
+          case Halt(err) => F.fail(err)
+          case Await(req,recv) => F.flatMap(F.attempt(req)) {e => go(Try(recv(e)), acc)}
+        }
+      }
+      go(this, IndexedSeq())
+    }
+
 
     /*
      * We define `Process1` as a type alias - see the companion object
@@ -744,10 +887,16 @@ object GeneralizedStreamTransducers {
         { src => eval_ { IO(src.close) } }
 
     /* Exercise 11: Implement `eval`, `eval_`, and use these to implement `lines`. */
-    def eval[F[_],A](a: F[A]): Process[F,A] = ???
+    def eval[F[_],A](a: F[A]): Process[F,A] = {
+      await[F,A,A](a) {
+        case Left(err) => Halt(err)
+        case Right(b) => Emit(b, Halt(End))
+      }
+    }
 
     /* Evaluate the action purely for its effects. */
-    def eval_[F[_],A,B](a: F[A]): Process[F,B] = ???
+    def eval_[F[_],A,B](a: F[A]): Process[F,B] =
+      eval(a).drain
 
     /* Helper function with better type inference. */
     def evalIO[A](a: IO[A]): Process[IO,A] =
@@ -908,7 +1057,8 @@ object GeneralizedStreamTransducers {
       eval(IO(a)).flatMap { a => Emit(a, constant(a)) }
 
     /* Exercise 12: Implement `join`. Notice this is the standard monadic combinator! */
-    def join[F[_],A](p: Process[F,Process[F,A]]): Process[F,A] = ???
+    def join[F[_],A](p: Process[F,Process[F,A]]): Process[F,A] =
+      p.flatMap(pp => pp)
 
     /*
      * An example use of the combinators we have so far: incrementally
@@ -924,6 +1074,11 @@ object GeneralizedStreamTransducers {
       pipe(intersperse("\n")).
       to(fileW("celsius.txt")).
       drain
+      /*
+      import fpinscala.iomonad.unsafePerformIO
+      import java.util.concurrent.Executors
+      unsafePerformIO(Process.runLog(Process.converter))(Executors.newCachedThreadPool)
+      */
 
                             /*
 
@@ -1027,4 +1182,26 @@ object ProcessTest extends App {
   println { Process.runLog { p2.onComplete(p2).onComplete(p2).take(1).take(1) } }
   println { Process.runLog(converter) }
   // println { Process.collect(Process.convertAll) }
+}
+
+object Test {
+  import GeneralizedStreamTransducers._
+  import fpinscala.iomonad.IO
+  import Process._
+
+  val p = eval(IO { println("woot"); 1 }).repeat
+  val p2 = eval(IO { println("cleanup"); 2 } ).onHalt {
+    case Kill => println { "cleanup was killed, instead of bring run" }; Halt(Kill)
+    case e => Halt(e)
+  }
+
+  def run(): Unit = {
+    import fpinscala.iomonad.unsafePerformIO
+    import java.util.concurrent.Executors
+    println {
+      unsafePerformIO(Process.runLog(Process.converter))(Executors.newCachedThreadPool)
+    }
+    // println { Process.runLog(converter) }
+    // println { Process.runLog { p2.onComplete(p2).onComplete(p2).take(1).take(1) } }
+  }
 }
